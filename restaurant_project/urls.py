@@ -16,7 +16,17 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from rest_framework import routers
+from users.views import *
+
+router = routers.DefaultRouter()
+router.register('permission', PermissionsView)
+router.register('restaurant', RestaurantsView)
+router.register('role', RoleView)
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-]
+                  path('admin/', admin.site.urls),
+                  path('user/', CreateUser.as_view(), name='create_user'),
+                  path('user/<int:pk>/', UserView.as_view(), name='user'),
+                  path('login/', Login.as_view(), name='login'),
+              ] + router.urls

@@ -1,5 +1,7 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import Permission
+from django.db.models import Q
+from rest_framework.permissions import IsAdminUser
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,7 +10,7 @@ from rest_framework import status, viewsets
 
 from users.serializer import *
 from users.models import *
-from users.custom_permission import is_permission,ISAllowed
+from users.custom_permission import is_permission, ISAllowed
 
 
 class CreateUser(APIView):
@@ -19,20 +21,26 @@ class CreateUser(APIView):
         user_type = request.data.get('user_type')
         permissions = request.data.get('permissions')
         restaurant = request.data.get('restaurant')
+        role = Role.objects.get(id=request.data.get('role'))
+        if is_permission(request.user, f'can_create_user_at_level{user_type}', restaurant, role=role,
+                         permissions=permissions):
 
-        if is_permission(request.user, f'can_create_user_at_level{user_type}', restaurant, permissions=permissions):
             serializer = self.serializer_class(data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
+            else:
+                return Response(serializer.errors, status=400)
+        return Response("You do not have permission to perform this action", status=403)
 
     def get(self, request):
-        restaurants = request.user.restaurant.all()
-        if is_permission(request.user, f'can_read_many_users', restaurants):
-            queryset = self.queryset.filter(user_type__gt=request.user.user_type)
+        restaurants = request.user.restaurant.values_list('id', flat='true')
+        queryset = self.queryset.filter(user_type__gt=request.user.user_type, restaurant__in=restaurants)
+        if request.user.role.position == 'Senior':
+            queryset = queryset | User.objects.filter(Q(user_type=request.user.user_type, role__position='junior'))
+        serializer = self.serializer_class(queryset, many=True)
 
-            serializer = self.serializer_class(queryset, many=True)
-            return Response(serializer.data)
+        return Response(serializer.data)
 
 
 class UserView(APIView):
@@ -44,10 +52,13 @@ class UserView(APIView):
 
         instance = self.queryset.filter(id=pk).last()
         user_type = instance.user_type
-        res_id = instance.restaurants.all()
-        if is_permission(request.user, f'read_user_at_level{user_type}', res_id):
+
+        res_id = instance.restaurant.values_list('id', flat='true')
+        role = instance.role
+        if is_permission(request.user, f'read_user_at_level_{user_type}', res_id, role=role):
             serializer = self.serializer_class(instance)
             return Response(serializer.data)
+        return Response("You do not have permission to perform this action", status=403)
 
         # Retrieve multiple objects
 
@@ -56,7 +67,9 @@ class UserView(APIView):
         instance = self.queryset.filter(id=pk).last()
         permissions = request.data.get('permissions')
         user_type = instance.user_type
-        if is_permission(request.user, f'update_user_at_level{user_type}', permissions):
+        role = instance.role
+        restaurant = instance.restaurant.values_list('id', flat='true')
+        if is_permission(request.user, f'update_user_at_level{user_type}', restaurant, role, permissions):
 
             user_type_from_request = request.data.get('user_type')
             user_permission = f'update_user_at_level{user_type_from_request}'
@@ -64,21 +77,36 @@ class UserView(APIView):
             if user_type_from_request and user_permission not in str(request.user.permissions.all()):
                 raise Exception("you do not have permission to perform this action")
 
-        serializer = self.serializer_class(instance, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=400)
+            if request.data.get('role'):
+                role = Role.objects.get(id=request.data.get('role'))
+                if not is_permission(request.user, f'can_create_user_at_level{user_type}', restaurant, role=role,
+                                     permissions=permissions):
+                    return Response("You do not have permission to perform this action", status=403)
+
+            if request.data.get('restaurant'):
+                restaurant = request.data.get('restaurant')
+                if not is_permission(request.user, f'can_create_user_at_level{user_type}', restaurant, role=role,
+                                     permissions=permissions):
+                    return Response("You do not have permission to perform this action", status=403)
+
+            serializer = self.serializer_class(instance, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            else:
+                return Response(serializer.errors, status=400)
+        return Response("You do not have permission to perform this action", status=403)
 
     def delete(self, request, pk, *args, **kwargs):
-        instance = self.queryset.filter(id=pk)
-        res_id = instance.restaurants.all()
+        instance = self.queryset.filter(id=pk).last()
+        res_id = instance.restaurant.values_list('id', flat='true')
         user_type = instance.user_type
-        if is_permission(request.user, f'delete_user_at_level{user_type}', res_id):
+        role = instance.role
+        if is_permission(request.user, f'delete_user_at_level{user_type}', res_id, role=role):
             serializer = self.serializer_class(instance)
             instance.delete()
             return Response(serializer.data)
+        return Response("You do not have permission to perform this action", status=403)
 
 
 class Login(APIView):
@@ -95,13 +123,15 @@ class Login(APIView):
         refresh_token = str(RefreshToken.for_user(user))
         serializer = self.serializer_class(user, data=request.data)
         serializer.is_valid()
-        print(serializer.data)
+
         return Response({
             "access_token": access_token,
             "refresh_token": refresh_token,
             "user": user.email,
             "user_type": user.user_type,
-            "permission": user.permissions.all().values_list("permission", flat=True)
+            "role": user.role.id,
+            "restaurant": user.restaurant.values_list("restaurant_name", flat=True),
+            "permission": user.permissions.values_list("permission", flat=True)
         })
 
 
@@ -112,7 +142,10 @@ class AddRemovePermissions(APIView):
         instance = User.objects.get(pk=pk)
         related_instance = Permission.objects.get(pk=request.permission)
         user_type = instance.user_type
-        if is_permission(request.user, f'update_user_at_level{user_type}', request.permissions):
+        role = instance.role
+        res_ids = instance.restaurant.all()
+        if is_permission(request.user, f'update_user_at_level{user_type}', res_ids, role=role,
+                         permissions=request.permissions):
             if request.POST.get("action") == 'add':
                 instance.permissions.add(related_instance)
 
@@ -130,3 +163,15 @@ class RestaurantsView(viewsets.ModelViewSet):
     queryset = Restaurants.objects.all()
     serializer_class = RestaurantSerializer
     permission_classes = [ISAllowed]
+
+
+class RoleView(viewsets.ModelViewSet):
+    queryset = Role.objects.all()
+    serializer_class = RoleSerializer
+    permission_classes = [IsAdminUser]
+
+
+class PermissionsView(viewsets.ModelViewSet):
+    queryset = Permissions.objects.all()
+    serializer_class = PermissionsSerializer
+    permission_classes = [IsAdminUser]

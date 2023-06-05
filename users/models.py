@@ -63,7 +63,7 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=255)
     last_name = models.CharField(max_length=255)
-    role = models.CharField(max_length=100,null=True)
+    role = models.ForeignKey('Role', on_delete=models.CASCADE,null=True,blank=True,related_name='user')
     user_type = models.IntegerField(
         choices=User_types, null=True, blank=True)
     permissions = models.ManyToManyField(Permissions, blank=True)
@@ -81,3 +81,7 @@ class User(AbstractUser):
 class Restaurants(models.Model):
     restaurant_name = models.CharField(max_length=100)
 
+
+class Role(models.Model):
+    designation = models.CharField(max_length=100)
+    position = models.CharField(max_length=100)

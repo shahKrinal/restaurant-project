@@ -24,7 +24,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True, required=True, validators=[validate_password], style={'input_type': 'password'})
     password2 = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
-    role = serializers.CharField(required=False)
+
 
     class Meta:
         model = User
@@ -46,9 +46,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             last_name=validated_data.get('last_name'),
             role=validated_data.get('role') if validated_data.get('role') else None,
             user_type=validated_data.get('user_type'),
-            restaurant=validated_data.get('restaurant') if validated_data.get('restaurant') else None
-
         )
+        user.restaurant.set(validated_data['restaurant'])
         user.permissions.set(validated_data['permissions'])
         user.set_password(validated_data['password'])
         user.save()
@@ -61,3 +60,7 @@ class RestaurantSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class RoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = '__all__'
