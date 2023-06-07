@@ -29,4 +29,7 @@ urlpatterns = [
                   path('user/', CreateUser.as_view(), name='create_user'),
                   path('user/<int:pk>/', UserView.as_view(), name='user'),
                   path('login/', Login.as_view(), name='login'),
+                  path('users/', CreateListView.as_view(), name='users'),
+                  path('example/<int:pk>/', UsersView.as_view(), name='example'),
+                  path('examples/<int:pk>/', RetrievedDeleteView.as_view(), name='example')
               ] + router.urls

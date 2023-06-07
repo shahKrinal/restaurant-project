@@ -11,8 +11,10 @@ def is_permission(user, user_permission, restaurant_ids, role=None, permissions=
         if user.user_type == int(user_permission[-1]):
 
             if user.role and user.role.designation == 'Manager':
+                if user.role and not user.role.designation == role.designation or user.role.position == role.position:
+                    return False
                 pass
-            elif user.role and user_permission.startswith("can_read"):
+            elif user.role and user_permission.startswith("read"):
                 if not user.role.designation == role.designation and user.role.position == 'Junior' and role.position == 'Senior':
                     return False
             else:

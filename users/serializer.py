@@ -10,13 +10,24 @@ class PermissionsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class UserSerializer(serializers.ModelSerializer):
+class RoleSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
+        model = Role
         fields = '__all__'
 
 
-class RegisterSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
+    role = RoleSerializer(read_only=True)
+    permissions = PermissionsSerializer(read_only=True, many=True)
+
+    class Meta:
+        model = User
+        fields = ('email', 'first_name', 'last_name', 'role',
+                  'user_type', 'permissions', 'restaurant'
+                  )
+
+
+class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField(
         required=True,
         validators=[UniqueValidator(queryset=User.objects.all())]
@@ -25,6 +36,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         write_only=True, required=True, validators=[validate_password], style={'input_type': 'password'})
     password2 = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
 
+    # roles =
+    # permissions =
+    # roles_count =
+    # permission_count =
 
     class Meta:
         model = User
@@ -57,10 +72,4 @@ class RegisterSerializer(serializers.ModelSerializer):
 class RestaurantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Restaurants
-        fields = '__all__'
-
-
-class RoleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Role
         fields = '__all__'

@@ -1,16 +1,21 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import Permission
-from django.db.models import Q
+from django.db.models import Q, Count, F
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAdminUser
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
-from rest_framework import status, viewsets
-
+from rest_framework import status, viewsets, generics
+from rest_framework import mixins
 from users.serializer import *
 from users.models import *
 from users.custom_permission import is_permission, ISAllowed
+from users.custom_mixin import DeleteMixin, RetrieveMixin, RetrievedMixin, DestroyMixin
+
+
+# from users.tests import CustomMixin
 
 
 class CreateUser(APIView):
@@ -31,7 +36,7 @@ class CreateUser(APIView):
                 return Response(serializer.data)
             else:
                 return Response(serializer.errors, status=400)
-        return Response("You do not have permission to perform this action", status=403)
+        return Response({"status": False, "message": "You do not have permission to perform this action"}, status=403)
 
     def get(self, request):
         restaurants = request.user.restaurant.values_list('id', flat='true')
@@ -50,15 +55,18 @@ class UserView(APIView):
     def get(self, request, pk):
         # Check if a specific object is requested
 
-        instance = self.queryset.filter(id=pk).last()
+        instance = self.queryset.filter(id=pk).annotate(permission_count=Count('permissions', distinct=True),
+                                                        role_count=Count('role', distinct=True)).last()
         user_type = instance.user_type
 
         res_id = instance.restaurant.values_list('id', flat='true')
         role = instance.role
         if is_permission(request.user, f'read_user_at_level_{user_type}', res_id, role=role):
-            serializer = self.serializer_class(instance)
-            return Response(serializer.data)
-        return Response("You do not have permission to perform this action", status=403)
+            serializer = self.serializer_class(instance).data
+            serializer['permission_count'] = instance.permission_count
+            serializer['role_count'] = instance.role_count
+            return Response(serializer)
+        return Response({"status": False, "message": "You do not have permission to perform this action"}, status=403)
 
         # Retrieve multiple objects
 
@@ -95,7 +103,8 @@ class UserView(APIView):
                 return Response(serializer.data)
             else:
                 return Response(serializer.errors, status=400)
-        return Response("You do not have permission to perform this action", status=403)
+
+        return Response({"status": False, "message": "You do not have permission to perform this action"}, status=403)
 
     def delete(self, request, pk, *args, **kwargs):
         instance = self.queryset.filter(id=pk).last()
@@ -106,7 +115,8 @@ class UserView(APIView):
             serializer = self.serializer_class(instance)
             instance.delete()
             return Response(serializer.data)
-        return Response("You do not have permission to perform this action", status=403)
+
+        return Response({"status": False, "message": "You do not have permission to perform this action"}, status=403)
 
 
 class Login(APIView):
@@ -175,3 +185,38 @@ class PermissionsView(viewsets.ModelViewSet):
     queryset = Permissions.objects.all()
     serializer_class = PermissionsSerializer
     permission_classes = [IsAdminUser]
+
+
+class CreateListView(mixins.ListModelMixin, mixins.CreateModelMixin, generics.GenericAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+    def get(self, request, *args, **kwargs):
+        # Handle GET request
+        return self.list(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        # Handle POST request
+        return self.create(request, *args, **kwargs)
+
+
+class UsersView(DeleteMixin, RetrieveMixin, APIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+    def get(self, request, pk, *args, **kwargs):
+        return self.retrieve(request, pk, *args, **kwargs)
+
+    def delete(self, request, pk, *args, **kwargs):
+        return self.delete(request, pk, *args, **kwargs)
+
+
+class RetrievedDeleteView(RetrieveMixin, DestroyMixin, generics.GenericAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+    def get(self, request, *args, **kwargs):
+        return self.retrieve(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        return self.destroy(request, *args, **kwargs)
