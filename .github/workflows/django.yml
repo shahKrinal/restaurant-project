@@ -28,4 +28,9 @@ jobs:
     - name: Run Django server
       run: |
           python users/tests.py
-          mv output1.csv ${{ github.workspace }}
+      
+    - name: Upload CSV file
+      uses: actions/upload-artifact@v2
+      with:
+          name: CSV Results
+          path: users/results
