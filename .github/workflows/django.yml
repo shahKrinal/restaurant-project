@@ -28,4 +28,4 @@ jobs:
     - name: Run Django server
       run: |
           python users/tests.py
-          mv output.csv ${{ github.workspace }}
+          mv output1.csv ${{ github.workspace }}
