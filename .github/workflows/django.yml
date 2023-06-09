@@ -27,4 +27,4 @@ jobs:
         pip install -r requirement.txt
     - name: Run Django server
       run: |
-          python manage.py runserver
+          python manage.py runserver 0.0.0.0:8000
