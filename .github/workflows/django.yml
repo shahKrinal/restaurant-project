@@ -27,4 +27,4 @@ jobs:
         pip install -r requirement.txt
     - name: Run first python file
       run: |
-          python test.py
+          users\python test.py
