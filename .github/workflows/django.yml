@@ -28,9 +28,3 @@ jobs:
     - name: Run Django server
       run: |
           python users/tests.py
-      
-    - name: Upload CSV file
-      uses: actions/upload-artifact@v2
-      with:
-          name: CSV Results
-          path: users/results
